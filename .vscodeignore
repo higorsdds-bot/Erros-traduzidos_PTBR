@@ -2,3 +2,6 @@ teste-dicionario.js
 publicar.ps1
 *.vsix
 .gitignore
+AGENTS.md
+teste-analisador.js
+teste-erro-colado.js

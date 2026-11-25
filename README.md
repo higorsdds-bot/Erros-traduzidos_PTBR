@@ -10,17 +10,54 @@ Funciona no **VS Code**, no **Antigravity**, no **Cursor** e em outros editores 
 
 **Hover com tradução**: ao passar o mouse sobre um erro, aparece:
 
-> 🔴 **Erro** (ts)
+> 🔴 **Erro** (ts) · linha 1, coluna 21
+>
+> 🎯 **Causa provável:** `funtion` está escrito errado: o certo é `function`.
+>
+> 📍 **Onde corrigir:** linha 1, coluna 1 _(não é exatamente onde o editor sublinhou)_
+> ```
+> 1 | funtion somar(a, b) {
+>   | ^^^^^^^
+> ```
+> ✅ **Correção:** Trocar "funtion" por "function" — clique na lâmpada 💡 ou use `Ctrl+.`
 >
 > 🇺🇸 `';' expected.`
 >
-> 🇧🇷 **Era esperado ';' aqui (está faltando ';').**
+> 🇧🇷 _Tradução literal:_ Erro de sintaxe: o editor esperava o fim da instrução aqui. Normalmente NÃO é falta de ';'...
 >
-> 📚 **Vocabulário:** `expected` = esperado
+> 📖 **`function`** — Declara uma função... (com exemplo e link para a MDN)
 
-**Tradução no fim da linha**: a tradução aparece em itálico ao lado da linha com erro, na cor do erro.
+**Causa real do erro (JavaScript/TypeScript)**: as mensagens do editor muitas vezes enganam — `';' expected` quase nunca é falta de ponto e vírgula. A extensão lê o código ao redor do erro e aponta a causa e a **posição exata**, por exemplo:
+
+| Você escreveu | O editor diz | A extensão mostra |
+|---|---|---|
+| `funtion somar() {` | `';' expected` | `funtion` escrito errado → `function` |
+| `const f = asnyc () => {}` | `';' expected` | `asnyc` escrito errado → `async` |
+| `} elseif (x) {` | `';' expected` | use `else if`, separado |
+| `console.log("Olá" nome)` | `',' expected` | falta `+` ou `,` entre `"Olá"` e `nome` |
+| `const a = [1, 2, 3;` | `',' expected` | o `[` da coluna 11 não foi fechado |
+| `if (x > 0 {` | `')' expected` | o `(` da coluna 4 não foi fechado |
+| `'}' expected` no fim do arquivo | — | qual `{` ficou aberta (pela indentação) |
+| `await` em função comum | `'await' expressions are only allowed...` | qual função precisa de `async` (e o caso do `forEach`) |
+| `const r = fetch(); r.json()` | `Property 'json' does not exist on type 'Promise'` | falta `await` |
+| `lista.psuh(1)`, `console.lg()` | `Property 'psuh' does not exist...` | o certo é `push`, `log` |
+| `const s = “oi”` | `Invalid character` | aspas curvas copiadas de Word/WhatsApp |
+
+Quando existe uma correção segura, ela aparece na **lâmpada 💡 (`Ctrl+.`)**. O ponto exato do problema ganha um contorno no editor, e, se ele estiver em outra linha, essa linha recebe a marca "⬅ 🎯 o problema está aqui".
+
+**Referência de JavaScript (MDN)**: quando o erro envolve uma palavra-chave ou função pronta (`async`, `await`, `fetch`, `Promise`, `map`, `forEach`, `JSON.parse`, `setTimeout`, `getElementById`...), o hover mostra o que ela faz, um exemplo e o link para a documentação da MDN em português.
+
+**Tradução no fim da linha**: a causa provável (ou a tradução) aparece em itálico ao lado da linha com erro, na cor do erro.
 
 **Lista completa**: `Ctrl+Shift+P` → *Tradutor de Erros: Listar erros do arquivo traduzidos*.
+
+**Erros do terminal e do navegador**: os erros que aparecem quando o programa **roda** (no terminal, no console do navegador, no Python) também são explicados:
+
+- **Links no terminal**: no terminal integrado, as mensagens de erro (`TypeError: ...`, `SyntaxError: ...`, `NameError: ...`) viram links. Clique com `Ctrl` e a extensão abre o arquivo **no ponto exato do erro** e mostra a explicação ao lado.
+- **Traduzir erro copiado**: copie o erro (do console do navegador, de um site, de onde for) e rode `Ctrl+Shift+P` → *Tradutor de Erros: Traduzir erro copiado*. Se não houver nada copiado, aparece uma caixa para colar.
+- **Traduzir erro selecionado**: selecione o erro no terminal, clique com o botão direito → *Tradutor de Erros: Traduzir erro selecionado*.
+
+Copie o erro **inteiro**, com as linhas `at ...` (JavaScript) ou `File "..."` (Python): é por elas que a extensão descobre o arquivo e a linha. Exemplo: em `TypeError: Cannot read properties of undefined (reading 'map')`, a extensão abre o arquivo e mostra que quem está `undefined` é `dados.itens`, e não o `map`.
 
 ## Como traduz
 
@@ -36,16 +73,21 @@ Funciona no **VS Code**, no **Antigravity**, no **Cursor** e em outros editores 
 | `tradutorErros.severidadeNaLinha` | `aviso` | `erro`, `aviso`, `informacao` ou `dica` |
 | `tradutorErros.traducaoOnline` | `true` | Usa o Google Tradutor quando a mensagem não está no dicionário |
 | `tradutorErros.mostrarVocabulario` | `true` | Mostra o vocabulário no hover |
+| `tradutorErros.analisarCausa` | `true` | Em JS/TS, mostra a causa provável e o local exato do erro |
+| `tradutorErros.mostrarReferencia` | `true` | Em JS/TS, mostra a explicação (MDN) de palavras-chave e funções prontas |
+| `tradutorErros.linksNoTerminal` | `true` | Transforma as mensagens de erro do terminal em links para a explicação |
 
 ## Comandos
 
+- *Tradutor de Erros: Traduzir erro copiado*
+- *Tradutor de Erros: Traduzir erro selecionado* (menu do botão direito no terminal)
 - *Tradutor de Erros: Listar erros do arquivo traduzidos*
 - *Tradutor de Erros: Mostrar/ocultar tradução no fim da linha*
 - *Tradutor de Erros: Limpar cache de traduções*
 
 ## Contribuir
 
-Achou uma mensagem sem tradução ou com tradução ruim? Abra uma [issue](https://github.com/higorsdds-bot/Erros-traduzidos_PTBR/issues) ou adicione uma regra na lista `regras` em `tradutor.js`. Para testar o dicionário: `node teste-dicionario.js`.
+Achou uma mensagem sem tradução ou com tradução ruim? Abra uma [issue](https://github.com/higorsdds-bot/Erros-traduzidos_PTBR/issues) ou adicione uma regra na lista `regras` em `tradutor.js`. Para testar: `node teste-dicionario.js` (dicionário), `node teste-analisador.js` (causa real dos erros de JS) e `node teste-erro-colado.js` (erros colados do terminal).
 
 Para gerar e instalar localmente:
 

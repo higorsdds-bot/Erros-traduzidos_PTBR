@@ -55,8 +55,31 @@
       {
         "command": "tradutorErros.limparCache",
         "title": "Tradutor de Erros: Limpar cache de traduções"
+      },
+      {
+        "command": "tradutorErros.traduzirErroCopiado",
+        "title": "Tradutor de Erros: Traduzir erro copiado"
+      },
+      {
+        "command": "tradutorErros.traduzirSelecaoTerminal",
+        "title": "Tradutor de Erros: Traduzir erro selecionado"
       }
     ],
+    "menus": {
+      "terminal/context": [
+        {
+          "command": "tradutorErros.traduzirSelecaoTerminal",
+          "when": "terminalTextSelected",
+          "group": "tradutorErros"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "tradutorErros.traduzirSelecaoTerminal",
+          "when": "terminalFocus && terminalTextSelected"
+        }
+      ]
+    },
     "configuration": {
       "title": "Tradutor de Erros",
       "properties": {
@@ -91,6 +114,21 @@
           "type": "boolean",
           "default": true,
           "description": "Mostra no hover as palavras-chave em inglês da mensagem e o significado delas."
+        },
+        "tradutorErros.analisarCausa": {
+          "type": "boolean",
+          "default": true,
+          "description": "Em JavaScript/TypeScript, analisa o código para mostrar a causa provável do erro e o local exato onde corrigir (ex.: 'funtion' escrito errado em vez de \"';' expected\")."
+        },
+        "tradutorErros.linksNoTerminal": {
+          "type": "boolean",
+          "default": true,
+          "description": "Transforma as mensagens de erro do terminal integrado (ex.: 'TypeError: ...') em links: clique com Ctrl para ver a explicação em português e ir direto ao local do erro."
+        },
+        "tradutorErros.mostrarReferencia": {
+          "type": "boolean",
+          "default": true,
+          "description": "Em JavaScript/TypeScript, mostra no hover a explicação e um exemplo (baseados na MDN) das palavras-chave e funções prontas relacionadas ao erro, como async, await, fetch, map..."
         }
       }
     }

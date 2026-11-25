@@ -30,6 +30,14 @@ Write-Host '==> Testando o dicionário' -ForegroundColor Cyan
 node teste-dicionario.js | Select-Object -Last 1
 if ($LASTEXITCODE -ne 0) { throw 'O teste do dicionário falhou.' }
 
+Write-Host '==> Testando o analisador de causa' -ForegroundColor Cyan
+node teste-analisador.js | Select-Object -Last 1
+if ($LASTEXITCODE -ne 0) { throw 'O teste do analisador falhou (rode node teste-analisador.js para ver os detalhes).' }
+
+Write-Host '==> Testando a leitura de erros colados' -ForegroundColor Cyan
+node teste-erro-colado.js | Select-Object -Last 1
+if ($LASTEXITCODE -ne 0) { throw 'O teste de erros colados falhou (rode node teste-erro-colado.js para ver os detalhes).' }
+
 if ($Versao) {
   Write-Host "==> Subindo a versão ($Versao)" -ForegroundColor Cyan
   npm version $Versao --no-git-tag-version | Out-Null
