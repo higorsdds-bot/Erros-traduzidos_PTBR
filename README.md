@@ -4,6 +4,8 @@ Mostra os erros e sugestões do editor **em inglês e em português**, para voc�
 
 Funciona no **VS Code**, no **Antigravity**, no **Cursor** e em outros editores baseados no VS Code, com qualquer linguagem que mostre erros no editor: JavaScript, TypeScript, Python, Java, PHP, C#...
 
+**Instalar:** procure por **Tradutor de Erros** na aba de extensões do seu editor, ou acesse o [Open VSX](https://open-vsx.org/extension/ZeniF/tradutor-de-erros) (Antigravity, Cursor, Windsurf, VSCodium).
+
 ## O que faz
 
 **Hover com tradução**: ao passar o mouse sobre um erro, aparece:
