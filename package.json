@@ -1,0 +1,77 @@
+{
+  "name": "tradutor-de-erros",
+  "displayName": "Tradutor de Erros (PT-BR)",
+  "description": "Mostra os erros e sugestões do VS Code em inglês e em português, para facilitar o aprendizado.",
+  "version": "0.1.0",
+  "publisher": "local",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/higorsdds-bot/Erros-traduzidos_PTBR.git"
+  },
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Linters",
+    "Education",
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "tradutorErros.listar",
+        "title": "Tradutor de Erros: Listar erros do arquivo traduzidos"
+      },
+      {
+        "command": "tradutorErros.alternarLinha",
+        "title": "Tradutor de Erros: Mostrar/ocultar tradução no fim da linha"
+      },
+      {
+        "command": "tradutorErros.limparCache",
+        "title": "Tradutor de Erros: Limpar cache de traduções"
+      }
+    ],
+    "configuration": {
+      "title": "Tradutor de Erros",
+      "properties": {
+        "tradutorErros.ativado": {
+          "type": "boolean",
+          "default": true,
+          "description": "Ativa a tradução dos erros e sugestões."
+        },
+        "tradutorErros.mostrarNaLinha": {
+          "type": "boolean",
+          "default": true,
+          "description": "Mostra a tradução no fim da linha que tem o erro."
+        },
+        "tradutorErros.severidadeNaLinha": {
+          "type": "string",
+          "enum": ["erro", "aviso", "informacao", "dica"],
+          "enumDescriptions": [
+            "Só erros",
+            "Erros e avisos",
+            "Erros, avisos e informações",
+            "Tudo, inclusive dicas"
+          ],
+          "default": "aviso",
+          "description": "Nível mínimo de severidade para mostrar a tradução no fim da linha."
+        },
+        "tradutorErros.traducaoOnline": {
+          "type": "boolean",
+          "default": true,
+          "description": "Quando a mensagem não está no dicionário embutido, envia o texto da mensagem de erro para o Google Tradutor. Desative para funcionar 100% offline."
+        },
+        "tradutorErros.mostrarVocabulario": {
+          "type": "boolean",
+          "default": true,
+          "description": "Mostra no hover as palavras-chave em inglês da mensagem e o significado delas."
+        }
+      }
+    }
+  }
+}
