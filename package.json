@@ -1,20 +1,41 @@
 {
   "name": "tradutor-de-erros",
   "displayName": "Tradutor de Erros (PT-BR)",
-  "description": "Mostra os erros e sugestões do VS Code em inglês e em português, para facilitar o aprendizado.",
+  "description": "Mostra os erros e sugestões do editor em inglês e em português, para quem está aprendendo a programar.",
   "version": "0.1.0",
-  "publisher": "local",
+  "publisher": "ZeniF",
   "license": "MIT",
+  "icon": "icone.png",
+  "galleryBanner": {
+    "color": "#003070",
+    "theme": "dark"
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/higorsdds-bot/Erros-traduzidos_PTBR.git"
   },
+  "homepage": "https://github.com/higorsdds-bot/Erros-traduzidos_PTBR#readme",
+  "bugs": {
+    "url": "https://github.com/higorsdds-bot/Erros-traduzidos_PTBR/issues"
+  },
+  "keywords": [
+    "português",
+    "portugues",
+    "pt-br",
+    "tradução",
+    "traducao",
+    "erros",
+    "translate",
+    "errors",
+    "diagnostics",
+    "iniciantes"
+  ],
   "engines": {
     "vscode": "^1.80.0"
   },
   "categories": [
-    "Linters",
     "Education",
+    "Linters",
     "Other"
   ],
   "activationEvents": [
