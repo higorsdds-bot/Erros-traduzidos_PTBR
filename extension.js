@@ -5,7 +5,8 @@ const path = require('path');
 const { fileURLToPath } = require('url');
 const { analisar } = require('./analisador');
 const { buscarReferencia } = require('./referencia-js');
-const { REGEX_LINHA_ERRO, TIPOS_DE_ERRO, limparTexto, pareceErro, interpretarErro, colunaNoArquivo } = require('./erro-colado');
+const { REGEX_LINHA_ERRO, REGEX_CORS, TIPOS_DE_ERRO, limparTexto, pareceErro, interpretarErro, colunaNoArquivo } = require('./erro-colado');
+const { analisarModulo } = require('./modulos');
 
 const cache = new Map();        // mensagem -> { texto, fonte }
 const falhas = new Map();       // mensagem -> horário da última falha online
@@ -51,16 +52,32 @@ async function traduzir(mensagem) {
   const traduzidas = linhas.map((l) => traduzirLocal(l));
   let fonte = 'dicionário';
 
+  // Mensagens escritas pelo próprio programador já em português (ex.: throw new Error('banco indisponível')).
+  traduzidas.forEach((t, i) => {
+    const resto = linhas[i].replace(/^(?:Uncaught (?:\(in promise\) )?)?(?:[A-Z]\w*(?:Error|Exception)|Error)(?: \[\w+\])?: /, '');
+    if (t === null && /[ãõçáéíóúâêôà]|\b(?:não|nao|erro|inválid[oa]|usuári[oa]|senha|obrigatóri[oa])\b/i.test(resto)) {
+      traduzidas[i] = `${linhas[i]} (mensagem já em português, escrita no próprio código com throw new Error)`;
+      fonte = 'mensagem do código';
+    }
+  });
+
   const pendentes = traduzidas.map((t, i) => (t === null ? i : -1)).filter((i) => i >= 0);
   if (pendentes.length) {
     const ultimaFalha = falhas.get(mensagem);
     if (!config().get('traducaoOnline') || (ultimaFalha && Date.now() - ultimaFalha < ESPERA_APOS_FALHA)) return null;
-    const textoPendente = pendentes.map((i) => linhas[i]).join('\n');
-    const online = await traduzirOnline(textoPendente);
+    // Privacidade: caminhos de arquivos e URLs locais não são enviados ao tradutor (trocados por marcadores).
+    const guardados = [];
+    const esconder = (s) => s.replace(/(?:file:\/\/\/?|[A-Za-z]:[\\/]|\\\\|(?<![\w.])\/(?=[\w.-]+\/))[^\s'"`)]*|https?:\/\/(?:localhost|127\.0\.0\.1|\[::1\])[^\s'"`)]*/g, (c) => {
+      guardados.push(c);
+      return `[[${guardados.length - 1}]]`;
+    });
+    const textoPendente = esconder(pendentes.map((i) => linhas[i]).join('\n'));
+    let online = await traduzirOnline(textoPendente);
     if (!online) {
       falhas.set(mensagem, Date.now());
       return null;
     }
+    online = online.replace(/\[\[\s*(\d+)\s*\]\]/g, (c, n) => guardados[Number(n)] ?? c);
     const partes = online.split('\n');
     pendentes.forEach((i, k) => { traduzidas[i] = partes[k] ?? ''; });
     if (partes.length !== pendentes.length) {
@@ -439,14 +456,17 @@ async function montarExplicacao(textoErro) {
     arquivo = await resolverArquivo(info.local.caminho);
     if (arquivo) {
       const doc = await vscode.workspace.openTextDocument(arquivo);
-      const linha = Math.min(info.local.linha - 1, doc.lineCount - 1);
+      const linhaConhecida = info.local.linha !== null && info.local.linha !== undefined;
+      const linha = linhaConhecida ? Math.max(0, Math.min(info.local.linha - 1, doc.lineCount - 1)) : 0;
       const textoLinha = doc.lineAt(linha).text;
-      const coluna = colunaNoArquivo(info.local, textoLinha);
+      const coluna = linhaConhecida ? colunaNoArquivo(info.local, textoLinha) : null;
       const col = coluna ? Math.min(coluna - 1, textoLinha.length) : textoLinha.search(/\S|$/);
       alvo = { linha, col, fimCol: coluna ? col + 1 : textoLinha.length };
       if (EXTENSOES_JS.test(arquivo.fsPath)) {
         try {
-          analise = analisar(doc.getText(), { linha, coluna: col, mensagem: info.principal });
+          // Erros de módulo olham a pasta e o outro arquivo; os demais, só o código deste arquivo.
+          analise = analisarModulo(info, arquivo.fsPath, doc.getText(), linhaConhecida ? linha : null)
+            ?? (linhaConhecida ? analisar(doc.getText(), { linha, coluna: col, mensagem: info.principal }) : null);
         } catch (erro) {
           console.error('[Tradutor de Erros] falha na análise:', erro);
         }
@@ -459,6 +479,10 @@ async function montarExplicacao(textoErro) {
       const nome = vscode.workspace.asRelativePath(arquivo);
       add('## 📍 Onde está o erro', '');
       add(`[${nome}, linha ${alvo.linha + 1}, coluna ${alvo.col + 1}](${arquivo.toString()}#L${alvo.linha + 1})`, '');
+      if (linhaConhecida && analise && analise.local && (analise.local.linha !== linha || (coluna && analise.local.col !== col))) {
+        add(`_O terminal apontou a linha ${linha + 1}${coluna ? `, coluna ${col + 1}` : ''} (primeiro trecho abaixo): é onde o erro **aconteceu**. O segundo trecho é onde ele precisa ser **corrigido**._`, '');
+        add('```text', trechoMarcado(doc, { linha, col, fimCol: coluna ? col + 1 : doc.lineAt(linha).text.length }), '```', '');
+      }
       add('```text', trechoMarcado(doc, alvo), '```', '');
       if (analise && analise.dica) add(`💡 ${analise.dica}`, '');
       if (analise && analise.correcao) {
@@ -467,6 +491,18 @@ async function montarExplicacao(textoErro) {
         if (corrigida !== null) add('```javascript', corrigida.trim(), '```', '');
       }
       if (analise && analise.exemplo) add('✍️ **Exemplo:**', '', '```javascript', analise.exemplo, '```', '');
+
+      // Caminho das chamadas no código do usuário (ex.: rota -> controller -> model)
+      const outras = (info.chamadas ?? []).filter((c) => !(c.linha === info.local.linha && c.caminho === info.local.caminho)).slice(0, 5);
+      if (outras.length) {
+        add('**Chamado por** (de dentro para fora):', '');
+        for (const c of outras) {
+          const uri = await resolverArquivo(c.caminho);
+          const rotulo = `${uri ? vscode.workspace.asRelativePath(uri) : c.caminho}:${c.linha}`;
+          add(`- ${c.funcao ? emCodigo(c.funcao) + ' em ' : ''}${uri ? `[${rotulo}](${uri.toString()}#L${c.linha})` : emCodigo(rotulo)}`);
+        }
+        add('');
+      }
     } else {
       add('## 📍 Onde está o erro', '');
       add(`${emCodigo(info.local.caminho)}, linha ${info.local.linha}${info.local.coluna ? `, coluna ${info.local.coluna}` : ''} _(arquivo não encontrado nesta pasta de trabalho)_`, '');
@@ -597,17 +633,24 @@ function contextoDoTerminal(terminal, linhaDeErro) {
  * seleciona tudo, copia, devolve a área de transferência como estava e limpa a seleção.
  */
 async function lerConteudoDoTerminal(terminal) {
+  const terminalAntes = vscode.window.activeTerminal;
+  let anterior = null;
   try {
-    if (terminal && vscode.window.activeTerminal !== terminal) terminal.show(true);
-    const anterior = await vscode.env.clipboard.readText();
+    if (terminal && terminalAntes !== terminal) terminal.show(true);
+    anterior = await vscode.env.clipboard.readText();
+    // Marcador: se depois da cópia ele ainda estiver lá, a cópia falhou.
+    const marcador = `tradutor-erros-${Date.now()}-${Math.random()}`;
+    await vscode.env.clipboard.writeText(marcador);
     await vscode.commands.executeCommand('workbench.action.terminal.selectAll');
     await vscode.commands.executeCommand('workbench.action.terminal.copySelection');
     const conteudo = await vscode.env.clipboard.readText();
     await vscode.commands.executeCommand('workbench.action.terminal.clearSelection');
-    await vscode.env.clipboard.writeText(anterior);
-    return conteudo && conteudo !== anterior ? conteudo : null;
+    return conteudo && conteudo !== marcador ? conteudo : null;
   } catch {
     return null;
+  } finally {
+    if (anterior !== null) await vscode.env.clipboard.writeText(anterior).then(undefined, () => {});
+    if (terminalAntes && terminal && terminalAntes !== terminal) terminalAntes.show(true);
   }
 }
 
@@ -617,7 +660,7 @@ const provedorLinksTerminal = {
     if (!cfg.get('ativado') || !cfg.get('linksNoTerminal')) return [];
     const linha = contexto.line;
     if (/^\s+at\s/.test(linha)) return [];
-    const m = REGEX_LINHA_ERRO.exec(linha);
+    const m = REGEX_CORS.exec(linha) ?? REGEX_LINHA_ERRO.exec(linha);
     if (!m) return [];
     const texto = m[0].trimEnd();
     return [{

@@ -885,6 +885,50 @@ function inicioDaExpressao(ctx, fim) {
   return 0;
 }
 
+/**
+ * De onde vem um nome? Procura no arquivo:
+ *  const x = require('mod') / const { x } = require('mod') / import x from 'mod' / import { x } from 'mod'
+ *  const x = algo.funcao(...)   (com ou sem await)
+ */
+function origemDoNome(ctx, nome) {
+  if (!nome || !/^[\w$]+$/.test(nome)) return null;
+  const linhas = ctx.linhas;
+  const n = nome.replace(/\$/g, '\\$');
+  for (let i = 0; i < linhas.length; i++) {
+    const l = linhas[i];
+    let m = new RegExp(`\\b(?:const|let|var)\\s+(\\{[^}]*\\b${n}\\b[^}]*\\}|${n})\\s*=\\s*require\\(\\s*['"\`]([^'"\`]+)['"\`]\\s*\\)`).exec(l);
+    if (m) return { tipo: 'require', desestruturado: m[1].startsWith('{'), modulo: m[2], linha: i };
+    m = new RegExp(`^\\s*import\\s+(?:(${n})|\\{[^}]*\\b${n}\\b[^}]*\\}|\\*\\s+as\\s+${n})\\s+from\\s+['"]([^'"]+)['"]`).exec(l);
+    if (m) return { tipo: 'import', desestruturado: !m[1], modulo: m[2], linha: i };
+    m = new RegExp(`\\b(?:const|let|var)\\s+${n}\\s*=\\s*(await\\s+)?([\\w$.]+)\\s*\\(`).exec(l);
+    if (m) return { tipo: 'chamada', comAwait: !!m[1], funcao: m[2], linha: i };
+  }
+  return null;
+}
+
+/** A função chamada parece assíncrona? (declarada como async neste arquivo, ou nome típico de busca) */
+function pareceAssincrona(ctx, funcao) {
+  const ultimo = funcao.split('.').pop();
+  const n = ultimo.replace(/\$/g, '\\$');
+  if (new RegExp(`async\\s+(?:function\\s*\\*?\\s*)?${n}\\s*\\(|${n}\\s*=\\s*async\\b|static\\s+async\\s+${n}\\s*\\(`).test(ctx.texto)) return 'certeza';
+  if (/^(fetch|buscar|carregar|obter|consultar|listar|salvar|criar|atualizar|deletar|remover|get|find|load|query|save|insert|update|delete|request|axios)/i.test(ultimo)) return 'talvez';
+  return null;
+}
+
+/** Dica para quando um nome importado não é o que se esperava (não é função/classe). */
+function dicaDeExportacao(origem, nome, oQueEsperava) {
+  if (!origem || (origem.tipo !== 'require' && origem.tipo !== 'import')) return null;
+  const mod = origem.modulo;
+  if (origem.tipo === 'require') {
+    return origem.desestruturado
+      ? `${codigo(nome)} vem de ${codigo(`require('${mod}')`)} com chaves: confira se ${codigo(mod)} exporta ${codigo(nome)} dentro do objeto (${codigo(`module.exports = { ${nome} }`)}) e se o nome está igual.`
+      : `${codigo(nome)} vem de ${codigo(`require('${mod}')`)}. Confira o final de ${codigo(mod)}: para receber ${oQueEsperava} ele precisa ter ${codigo(`module.exports = ${nome}`)}. Se ele exporta um objeto (${codigo(`module.exports = { ${nome} }`)}), importe com chaves: ${codigo(`const { ${nome} } = require('${mod}')`)}. Se esqueceu o ${codigo('module.exports')}, o require devolve ${codigo('{}')}.`;
+  }
+  return origem.desestruturado
+    ? `${codigo(nome)} vem de ${codigo(`import { ${nome} } from '${mod}'`)}: confira se ${codigo(mod)} tem ${codigo(`export function ${nome}`)} / ${codigo(`export class ${nome}`)} com esse nome.`
+    : `${codigo(nome)} vem de ${codigo(`import ${nome} from '${mod}'`)} (export default). Confira se ${codigo(mod)} tem ${codigo(`export default ${nome}`)}; se ele usa ${codigo(`export { ${nome} }`)}, importe com chaves.`;
+}
+
 const METODOS_DE_ARRAY = ['map', 'filter', 'forEach', 'reduce', 'find', 'findIndex', 'push', 'pop', 'includes', 'join', 'some', 'every', 'sort', 'slice', 'splice', 'indexOf', 'flat', 'flatMap'];
 
 function analisarErroDeExecucao(ctx, msg, pos, linha) {
@@ -912,13 +956,121 @@ function analisarErroDeExecucao(ctx, msg, pos, linha) {
     const exprIni = toks[ini], exprFim = toks[fimObj];
     if (!exprIni || exprIni.linha !== linha) return null;
     const expr = ctx.texto.slice(exprIni.ini, exprFim.fim);
-    return {
+    const r = {
       causa: `${codigo(expr)} está ${codigo(valor)} nesta linha, por isso não dá para ${acao === 'read' ? 'ler' : 'definir'} ${prop ? codigo('.' + prop) : 'uma propriedade'} dele.`,
       local: { linha, col: exprIni.col, fimCol: exprFim.fimCol },
-      dica: valor === 'null' && /getElementById|querySelector/.test(ctx.linhas.join('\n'))
-        ? `Se ${codigo(expr)} veio de ${codigo('getElementById')}/${codigo('querySelector')}, o elemento não foi encontrado: confira o id/seletor no HTML e se o ${codigo('<script>')} está no fim do ${codigo('<body>')} (ou use ${codigo('defer')}).`
-        : `Confira se ${codigo(expr)} recebeu um valor antes desta linha: o nome da propriedade está certo? O dado já chegou (falta ${codigo('await')})? Para não quebrar quando estiver vazio: ${codigo(expr + '?.' + (prop ?? 'x'))}.`,
       refs: [],
+    };
+    const raiz = exprIni.valor;
+    if (raiz === 'this') {
+      // Método passado como callback (router.get('/', controller.listar)) perde o this.
+      r.causa = `${codigo('this')} está ${codigo(valor)} aqui: o método foi chamado "solto", sem o objeto dele, por isso ${codigo('this' + (prop && expr === 'this' ? '.' + prop : expr.slice(4)))} não funciona.`;
+      r.dica = `Isso acontece quando um método de classe é passado direto como callback, ex.: ${codigo("router.get('/', controller.listar)")}. Use uma arrow function — ${codigo("router.get('/', (req, res) => controller.listar(req, res))")} — ou ${codigo('controller.listar.bind(controller)')}.`;
+      return r;
+    }
+    const origem = origemDoNome(ctx, raiz);
+    if (origem && origem.tipo === 'chamada' && !origem.comAwait && expr !== raiz) {
+      const async = pareceAssincrona(ctx, origem.funcao);
+      if (async) {
+        r.causa = `${codigo(expr)} está ${codigo(valor)} porque ${codigo(raiz)} ${async === 'certeza' ? 'é' : 'provavelmente é'} uma Promise: na linha ${origem.linha + 1} ${codigo(origem.funcao + '(...)')} foi chamada sem ${codigo('await')}.`;
+        r.local = { linha: origem.linha, col: ctx.linhas[origem.linha].indexOf(origem.funcao), fimCol: ctx.linhas[origem.linha].indexOf(origem.funcao) + origem.funcao.length };
+        r.dica = `Funções ${codigo('async')} devolvem uma Promise, não o valor. Use ${codigo(`const ${raiz} = await ${origem.funcao}(...)`)} (e a função de fora precisa ser ${codigo('async')}).`;
+        r.correcao = { titulo: `Adicionar "await" antes de ${origem.funcao}(...)`, linha: r.local.linha, col: r.local.col, fimLinha: r.local.linha, fimCol: r.local.col, texto: 'await ' };
+        r.refs = ['await', 'async'];
+        return r;
+      }
+    }
+    if (/^req\.body$/.test(expr)) {
+      r.dica = `Em Express, ${codigo('req.body')} só existe se o servidor ligar o leitor de JSON antes das rotas: ${codigo('app.use(express.json())')}. Para formulários HTML, também ${codigo('app.use(express.urlencoded({ extended: true }))')}.`;
+      return r;
+    }
+    r.dica = valor === 'null' && /getElementById|querySelector/.test(ctx.linhas.join('\n'))
+        ? `Se ${codigo(expr)} veio de ${codigo('getElementById')}/${codigo('querySelector')}, o elemento não foi encontrado: confira o id/seletor no HTML e se o ${codigo('<script>')} está no fim do ${codigo('<body>')} (ou use ${codigo('defer')}).`
+        : `Confira se ${codigo(expr)} recebeu um valor antes desta linha: o nome da propriedade está certo? O dado já chegou (falta ${codigo('await')})? Para não quebrar quando estiver vazio: ${codigo(expr + '?.' + (prop ?? 'x'))}.`;
+    return r;
+  }
+
+  // Cannot destructure property 'nome' of 'req.body' as it is undefined
+  m = /^Cannot destructure (?:property ['"](.+?)['"] of )?['"](.+?)['"] as it is (undefined|null)/i.exec(msg);
+  if (m) {
+    const [, prop, obj, valor] = m;
+    const texto = ctx.linhas[linha] ?? '';
+    const col = texto.indexOf(obj);
+    return {
+      causa: `${codigo(obj)} está ${codigo(valor)} nesta linha, então não dá para tirar ${prop ? codigo(prop) : 'valores'} dele com ${codigo('{ }')}.`,
+      local: col >= 0 ? { linha, col, fimCol: col + obj.length } : null,
+      dica: /req\.body/.test(obj)
+        ? `Em Express, ${codigo('req.body')} só existe se o servidor ligar o leitor de JSON ANTES das rotas: ${codigo('app.use(express.json())')} no server/app. Para formulários HTML: ${codigo('app.use(express.urlencoded({ extended: true }))')}. E o cliente precisa enviar ${codigo('Content-Type: application/json')}.`
+        : `Garanta um valor padrão: ${codigo(`const { ${prop ?? '...'} } = ${obj} ?? {}`)}, ou confira por que ${codigo(obj)} chegou vazio.`,
+      refs: [],
+    };
+  }
+
+  // Express: "argument handler must be a function" / "Route.get() requires a callback function but got a [object Undefined]"
+  m = /^argument handler must be a function|requires a callback function but got a \[object (\w+)\]|requires a middleware function/i.exec(msg);
+  if (m) {
+    // último argumento da chamada router.xxx(...) / app.use(...) nesta linha
+    const texto = ctx.linhas[linha] ?? '';
+    const chamada = /\b(\w+)\.(get|post|put|patch|delete|use|all)\s*\(([^]*?)\)\s*;?\s*$/.exec(texto);
+    if (!chamada) return null;
+    const args = chamada[3].split(',').map((a) => a.trim()).filter(Boolean);
+    const ultimo = args[args.length - 1];
+    const col = texto.lastIndexOf(ultimo);
+    const nome = /^[\w$]+/.exec(ultimo)?.[0];
+    const origem = origemDoNome(ctx, nome);
+    return {
+      causa: `${codigo(ultimo)}, passado para ${codigo(`${chamada[1]}.${chamada[2]}()`)}, não é uma função${m[1] ? ` (é ${m[1]})` : ''}. A rota precisa receber uma função ${codigo('(req, res) => { ... }')}.`,
+      local: col >= 0 ? { linha, col, fimCol: col + ultimo.length } : null,
+      dica: dicaDeExportacao(origem, nome, 'uma função')
+        ?? `Se ${codigo(ultimo)} é um método de um controller, confira o nome e se o controller foi exportado/importado certo.`,
+      refs: [],
+    };
+  }
+
+  // Cannot set headers after they are sent to the client
+  if (/Cannot set headers after they are sent/i.test(msg)) {
+    const k = ctx.indiceEm(pos);
+    const fn = funcaoQueEnvolve(ctx, k);
+    const ini = fn && fn.inicio ? fn.inicio.ini : 0;
+    const anteriores = [];
+    for (let j = k - 1; j >= 0 && toks[j].ini >= ini; j--) {
+      const t = toks[j];
+      if (t.tipo === 'id' && t.valor === 'res' && toks[j + 1]?.valor === '.' && t.linha < linha) anteriores.push(j);
+    }
+    const envio = anteriores.find((j) => /^res\.(?:status\([^)]*\)\.)?(json|send|end|redirect|render|sendStatus|sendFile|download)\b/.test(ctx.texto.slice(toks[j].ini, toks[j].ini + 80)));
+    if (envio === undefined) {
+      return {
+        causa: 'Esta linha tenta enviar a resposta, mas ela já tinha sido enviada antes (cada requisição só pode ter uma resposta).',
+        local: null,
+        dica: `Procure outro ${codigo('res.json')}/${codigo('res.send')} que roda antes deste e coloque ${codigo('return')} nele: ${codigo('return res.status(404).json(...)')}.`,
+        refs: [],
+      };
+    }
+    const t = toks[envio];
+    const temReturn = toks[envio - 1]?.valor === 'return';
+    return {
+      causa: `A resposta já foi enviada na linha ${t.linha + 1} e o código continuou até a linha ${linha + 1}, que tenta responder de novo. Cada requisição só pode ter UMA resposta.`,
+      local: localDe(t),
+      dica: temReturn
+        ? 'Confira o fluxo: algum caminho envia a resposta duas vezes (ex.: dentro de um laço ou de um callback).'
+        : `Coloque ${codigo('return')} na resposta da linha ${t.linha + 1}, para a função parar ali: ${codigo('return ' + (ctx.linhas[t.linha] ?? '').trim())}`,
+      correcao: temReturn ? undefined : { titulo: `Adicionar "return" na resposta da linha ${t.linha + 1}`, linha: t.linha, col: t.col, fimLinha: t.linha, fimCol: t.col, texto: 'return ' },
+      refs: ['return'],
+    };
+  }
+
+  // X is not a constructor
+  m = /^(.+?) is not a constructor/i.exec(msg);
+  if (m) {
+    const nome = m[1].split('.').pop();
+    const achado = naLinha((t) => t.valor === nome);
+    const origem = origemDoNome(ctx, m[1].split('.')[0]);
+    return {
+      causa: `${codigo(m[1])} não é uma classe, por isso não dá para usar ${codigo('new ' + m[1] + '(...)')}.`,
+      local: achado ? localDe(achado[0]) : null,
+      dica: dicaDeExportacao(origem, m[1].split('.')[0], 'a classe')
+        ?? `Confira o nome e se ${codigo(m[1])} é mesmo uma classe (${codigo('class ' + nome + ' { ... }')}). Arrow functions e objetos não funcionam com ${codigo('new')}.`,
+      refs: ['class', 'new'],
     };
   }
 
@@ -939,6 +1091,22 @@ function analisarErroDeExecucao(ctx, msg, pos, linha) {
         refs: [prop, 'Object.entries'],
       };
     }
+    // Veio de require/import? Então o problema quase sempre é o que o outro arquivo exporta.
+    const raizNome = (obj || prop).split('.')[0];
+    const origem = origemDoNome(ctx, raizNome);
+    const dicaExport = dicaDeExportacao(origem, raizNome, obj ? `um objeto com ${codigo(prop)}` : 'uma função');
+    if (dicaExport) {
+      return {
+        causa: obj
+          ? `${codigo(obj)} não tem uma função ${codigo(prop)}: o que veio de ${codigo(origem.modulo)} não é o que este código espera.`
+          : `${codigo(prop)} não é uma função: o que veio de ${codigo(origem.modulo)} não é uma função.`,
+        local,
+        dica: obj
+          ? `Confira em ${codigo(origem.modulo)} se existe ${codigo(prop)} e se ele está no ${codigo('module.exports')}/${codigo('export')} (ex.: ${codigo(`module.exports = { ${prop} }`)}). Sem ${codigo('module.exports')}, o require devolve ${codigo('{}')}.`
+          : dicaExport,
+        refs: [],
+      };
+    }
     const todos = [...new Set(Object.values(require('./referencia-js').metodosPorTipo).flat())];
     const sugestao = prop && maisParecida(prop, todos);
     if (sugestao) {
@@ -954,6 +1122,66 @@ function analisarErroDeExecucao(ctx, msg, pos, linha) {
       local,
       dica: `Confira o nome (maiúsculas/minúsculas contam) e o que ${codigo(nomeCompleto)} guarda: se é um valor (texto, número, objeto), não use ${codigo('()')} depois dele.`,
       refs: [],
+    };
+  }
+
+  // JSON.parse com texto inválido (mensagens novas e antigas do V8)
+  m = /in JSON at position (\d+)|^Unexpected end of JSON input|is not valid JSON|^JSON\.parse: /i.exec(msg);
+  if (m) {
+    const posicao = m[1] !== undefined ? Number(m[1]) : null;
+    const achado = naLinha((t) => t.valor === 'parse' && toks[toks.indexOf(t) - 2]?.valor === 'JSON');
+    if (!achado) return null;
+    const [, k] = achado;
+    const arg = toks[k + 2];
+    if (!toks[k + 1] || toks[k + 1].valor !== '(' || !arg) return null;
+    const motivo =
+      /Expected property name/i.test(msg) ? `os nomes das propriedades precisam estar entre aspas duplas (${codigo('{"nome": "Ana"}')}, não ${codigo('{nome: "Ana"}')})`
+      : /double-quoted property name/i.test(msg) ? `provavelmente há uma vírgula sobrando antes do ${codigo('}')} (JSON não aceita vírgula no final)`
+      : /after property value|after array element/i.test(msg) ? 'falta uma vírgula entre os itens, ou o fechamento do objeto/lista'
+      : /Unterminated string/i.test(msg) ? 'um texto entre aspas não foi fechado'
+      : /end of JSON input/i.test(msg) ? 'o texto está vazio ou incompleto'
+      : /Unexpected token '?</i.test(msg) ? `o texto começa com ${codigo('<')}: provavelmente é uma página HTML (ex.: erro 404 do servidor), não JSON`
+      : `JSON usa aspas duplas (não simples) e não aceita vírgula sobrando nem comentários`;
+
+    if ((arg.tipo === 'str' || (arg.tipo === 'tpl' && !arg.valor.includes('${'))) && ctx.offset(arg.linha, 0) + ctx.linhas[arg.linha].length >= arg.fim) {
+      // Texto escrito direto no código: aponta o caractere exato da "position N".
+      const bruto = arg.valor.slice(1, -1);
+      let col = null;
+      if (posicao !== null) {
+        let lidos = 0;
+        for (let j = 0; j <= bruto.length; j++) {
+          if (lidos === posicao) { col = arg.col + 1 + j; break; }
+          if (bruto[j] === '\\') j++;
+          lidos++;
+        }
+      }
+      return {
+        causa: `O texto passado para ${codigo('JSON.parse')} não é um JSON válido: ${motivo}.`,
+        local: col !== null ? { linha: arg.linha, col, fimCol: col + 1 } : localDe(arg),
+        dica: col !== null ? `O problema está no caractere ${codigo(ctx.linhas[arg.linha][col] ?? '')} (posição ${posicao} do texto).` : undefined,
+        exemplo: 'const pessoa = JSON.parse(\'{"nome": "Ana", "idade": 30}\');',
+        refs: ['JSON.parse'],
+      };
+    }
+    return {
+      causa: `O texto passado para ${codigo('JSON.parse')} não é um JSON válido: ${motivo}.`,
+      local: localDe(arg),
+      dica: `Veja o que chegou com ${codigo(`console.log(${ctx.texto.slice(arg.ini, arg.fim)})`)}. Se o texto veio de um ${codigo('fetch')}, use ${codigo('await resposta.json()')} e confira se a URL devolve JSON mesmo (e não uma página HTML de erro).`,
+      refs: ['JSON.parse', 'json'],
+    };
+  }
+
+  // Erro lançado pelo próprio código: throw new Error('...') sem ninguém tratar
+  const lancamento = naLinha((t) => t.valor === 'throw');
+  if (lancamento && !/^(?:Cannot|.+ is not |Unexpected|Invalid|Maximum|Assignment)/i.test(msg)) {
+    const k = lancamento[1];
+    const fn = funcaoQueEnvolve(ctx, k);
+    const nomeFn = fn && fn.inicio ? (ctx.linhas[fn.inicio.linha] ?? '').slice(fn.inicio.col).match(/^(?:async\s+)?(?:function\s+)?(?:static\s+)?(?:async\s+)?([\w$]+)/)?.[1] : null;
+    return {
+      causa: `Este erro foi lançado pelo próprio código, com ${codigo('throw')} na linha ${linha + 1}${nomeFn && nomeFn !== 'function' ? ` (dentro de ${codigo(nomeFn)})` : ''}, e ninguém o tratou, então o programa parou.`,
+      local: localDe(lancamento[0]),
+      dica: `Se o erro é esperado (ex.: banco fora do ar), trate onde a função é chamada: ${codigo('try { await ' + (nomeFn ?? 'funcao') + '() } catch (erro) { ... }')} ou ${codigo('.catch((erro) => ...)')}. A mensagem do erro é a que você escreveu no ${codigo('throw')}.`,
+      refs: ['throw', 'try'],
     };
   }
 
@@ -1120,7 +1348,16 @@ function analisarInterno(ctx, msg, pos, linha, cod) {
     if (p && (fimArquivo || p.porIndentacao || p.abre.linha === linha || esperado)) return descreverNaoFechado(ctx, p);
   }
 
-  return analisarPontuacao(ctx, pos, msg) || analisarValoresJuntos(ctx, pos);
+  const pontual = analisarPontuacao(ctx, pos, msg) || analisarValoresJuntos(ctx, pos);
+  if (pontual) return pontual;
+
+  // Por último: um bloco { aberto ANTES do erro e nunca fechado explica "Unexpected token" mais abaixo
+  // (ex.: falta o } de um método e o Node reclama do "module.exports" no fim do arquivo).
+  if (/Unexpected (?:token|identifier|keyword|string|number)|Declaration or statement expected|Expression expected|';' expected/i.test(msg)) {
+    const p = problemas.find((x) => x.tipo === 'naoFechado' && x.abre.valor === '{' && x.abre.ini < pos && (x.porIndentacao || x.antes === null));
+    if (p) return descreverNaoFechado(ctx, p);
+  }
+  return null;
 }
 
 module.exports = { analisar, tokenizar, distancia, maisParecida, buscarReferencia };

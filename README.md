@@ -57,6 +57,8 @@ Quando existe uma correção segura, ela aparece na **lâmpada 💡 (`Ctrl+.`)**
 - **Traduzir erro copiado**: copie o erro (do console do navegador, de um site, de onde for) e rode `Ctrl+Shift+P` → *Tradutor de Erros: Traduzir erro copiado*. Se não houver nada copiado, aparece uma caixa para colar.
 - **Traduzir erro selecionado**: selecione o erro no terminal, clique com o botão direito → *Tradutor de Erros: Traduzir erro selecionado*.
 
+Em projetos com várias pastas (server, routes, controllers, models), a extensão ignora o código das bibliotecas (`node_modules`), abre o **seu** arquivo, mostra o caminho das chamadas (rota → controller → model) e explica erros típicos: `require`/`import` com caminho ou nome errado, `.js` esquecido no import, export que não existe, `this` perdido no controller, `await` esquecido, `req.body` vazio (falta `express.json()`), resposta enviada duas vezes, porta ocupada e CORS.
+
 Copie o erro **inteiro**, com as linhas `at ...` (JavaScript) ou `File "..."` (Python): é por elas que a extensão descobre o arquivo e a linha. Exemplo: em `TypeError: Cannot read properties of undefined (reading 'map')`, a extensão abre o arquivo e mostra que quem está `undefined` é `dados.itens`, e não o `map`.
 
 ## Como traduz
@@ -87,7 +89,7 @@ Copie o erro **inteiro**, com as linhas `at ...` (JavaScript) ou `File "..."` (P
 
 ## Contribuir
 
-Achou uma mensagem sem tradução ou com tradução ruim? Abra uma [issue](https://github.com/higorsdds-bot/Erros-traduzidos_PTBR/issues) ou adicione uma regra na lista `regras` em `tradutor.js`. Para testar: `node teste-dicionario.js` (dicionário), `node teste-analisador.js` (causa real dos erros de JS) e `node teste-erro-colado.js` (erros colados do terminal).
+Achou uma mensagem sem tradução ou com tradução ruim? Abra uma [issue](https://github.com/higorsdds-bot/Erros-traduzidos_PTBR/issues) ou adicione uma regra na lista `regras` em `tradutor.js`. Para testar: `node teste-dicionario.js` (dicionário), `node teste-analisador.js` (causa real dos erros de JS) , `node teste-erro-colado.js` (erros colados do terminal) e `node teste-projetos.js` (projetos com server/routes/controllers/models).
 
 Para gerar e instalar localmente:
 

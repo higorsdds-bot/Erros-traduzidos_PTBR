@@ -9,6 +9,9 @@ function rx(padrao) {
   return new RegExp('^(?:' + padrao.replace(/Q/g, Q) + ')\\.?$', 'i');
 }
 
+// Mostra só o fim de um caminho: C:\...\models\Usuario.js -> models/Usuario.js
+const curto = (caminho) => String(caminho).replace(/^file:\/\/\/?/, '').split(/[\\/]/).slice(-2).join('/');
+
 const regras = [
   // ---------------- JavaScript / TypeScript ----------------
   [rx("Cannot find name Q(.+?)Q"), "Não foi possível encontrar o nome '$1' (não foi declarado ou está escrito errado)."],
@@ -82,7 +85,30 @@ const regras = [
   [rx("(?:Uncaught )?(?:ReferenceError: )?super\\(\\) called twice in derived class constructor"), "'super()' foi chamado duas vezes no construtor."],
   [rx("(?:Uncaught )?(?:TypeError: )?Cannot read propert(?:y|ies) (?:Q(.+?)Q )?of (undefined|null)(?: \\(reading Q(.+?)Q\\))?"), (a, valor, b) => `Não é possível ler a propriedade '${a || b || '?'}' de ${valor}: a variável antes do ponto está vazia (${valor}). Verifique se ela recebeu valor (ex.: elemento não encontrado, dado que ainda não chegou).`],
   [rx("(?:Uncaught )?(?:TypeError: )?Cannot set propert(?:y|ies) (?:Q(.+?)Q )?of (undefined|null)(?: \\(setting Q(.+?)Q\\))?"), (a, valor, b) => `Não é possível definir a propriedade '${a || b || '?'}' em ${valor}: a variável antes do ponto está vazia (${valor}).`],
-  [rx("(?:Uncaught )?(?:TypeError: )?(.+?) is (undefined|null)"), "'$1' é $2 (está vazio)."],
+  [rx("(?:Uncaught )?(?:TypeError: )?Cannot destructure property Q(.+?)Q of Q(.+?)Q as it is (undefined|null)"), (prop, obj, valor) => `Não é possível tirar '${prop}' de '${obj}' porque '${obj}' é ${valor}.${/req\.body/.test(obj) ? ' Em Express, req.body só existe se você ligar o leitor de JSON: app.use(express.json()).' : ''}`],
+  [rx("(?:Uncaught )?(?:TypeError: )?Cannot destructure Q(.+?)Q as it is (undefined|null)"), "Não é possível desestruturar '$1' porque ele é $2."],
+
+  // ---- Servidores Node / Express / módulos
+  [rx("(?:Error \\[ERR_HTTP_HEADERS_SENT\\]: )?Cannot set headers after they are sent to the client"), "A resposta já foi enviada para o cliente e o código tentou responder de novo. Cada requisição só pode ter UM res.json/res.send — coloque 'return' antes do primeiro (ex.: return res.status(404).json(...))."],
+  [rx("(?:Error: )?listen EADDRINUSE: address already in use (.+)"), "A porta já está em uso ($1): outro programa (ou outro terminal rodando o mesmo servidor) já está usando essa porta. Feche o outro processo (Ctrl+C no outro terminal) ou troque a porta."],
+  [rx("(?:Error: )?listen EACCES: permission denied (.+)"), "Sem permissão para usar a porta $1. Use uma porta acima de 1024 (ex.: 3000)."],
+  [rx("(?:Error: )?(?:connect )?ECONNREFUSED (.+)"), "Conexão recusada em $1: não há nenhum servidor rodando nesse endereço/porta (ele está ligado? a porta está certa?)."],
+  [rx("(?:TypeError: )?fetch failed"), "O fetch falhou: o servidor não respondeu (não está rodando, endereço errado ou sem internet)."],
+  [rx("(?:Error \\[ERR_MODULE_NOT_FOUND\\]: )?Cannot find module Q(.+?)Q imported from (.+)"), (mod, de) => `O arquivo '${curto(mod)}' não existe (importado em ${curto(de)}). Confira o caminho, maiúsculas/minúsculas e se você escreveu a extensão .js no import.`],
+  [rx("(?:Error \\[ERR_MODULE_NOT_FOUND\\]: )?Cannot find package Q(.+?)Q imported from (.+)"), (pac, de) => `O pacote '${pac}' não está instalado (importado em ${curto(de)}). Rode 'npm install ${pac}' na pasta do projeto, ou confira o nome.`],
+  [rx("(?:SyntaxError: )?The requested module Q(.+?)Q does not provide an export named Q(.+?)Q"), (mod, nome) => nome === 'default'
+    ? `O módulo '${mod}' não tem 'export default'. Use import { nome } from '${mod}', ou adicione 'export default' no arquivo.`
+    : `O módulo '${mod}' não exporta nada chamado '${nome}'. Confira o nome (maiúsculas contam) e se o arquivo tem 'export' nele — se for 'export default', importe sem chaves.`],
+  [rx("(?:ReferenceError: )?(require|module|exports) is not defined in ES module scope.*"), "'$1' não existe em módulos ES (arquivos com import/export ou \"type\": \"module\" no package.json). Use import/export, ou renomeie o arquivo para .cjs."],
+  [rx("(?:ReferenceError: )?(__dirname|__filename) is not defined in ES module scope.*"), "'$1' não existe em módulos ES. Use import.meta.dirname / import.meta.filename (Node 20.11+) ou path.dirname(fileURLToPath(import.meta.url))."],
+  [rx("This file is being treated as an ES module because it has a Q\\.jsQ file extension and Q(.+?)Q contains \"type\": \"module\".*"), "O arquivo é tratado como módulo ES porque o package.json tem \"type\": \"module\". Para usar require, renomeie o arquivo para .cjs."],
+  [rx("(?:Error \\[ERR_REQUIRE_ESM\\]: )?require\\(\\) of ES Module (.+?) (?:from (.+?) )?not supported.*"), "Não dá para usar require() num módulo ES ($1). Use import, ou troque a versão do pacote."],
+  [rx("(?:TypeError: )?argument handler must be a function"), "A função passada para a rota (router.get/post...) não é uma função — normalmente o controller foi importado errado (ex.: o arquivo exporta um objeto { listar } e você importou sem chaves, ou esqueceu o module.exports)."],
+  [rx("(?:Error: )?Route\\.(\\w+)\\(\\) requires a callback function but got a \\[object (\\w+)\\]"), "router.$1() precisa de uma função, mas recebeu $2 — o controller foi importado errado ou o nome do método está errado."],
+  [rx("(?:TypeError: )?Router\\.use\\(\\) requires a middleware function(?: but got a (.+))?"), "app.use()/router.use() precisa de uma função (middleware/rotas) — confira o module.exports do arquivo de rotas."],
+  [rx("(?:UnhandledPromiseRejection: )?This error originated either by throwing inside of an async function without a catch block, or by rejecting a promise which was not handled with \\.catch\\(\\)\\. The promise rejected with the reason \"(.*)\""), "Uma Promise foi rejeitada e ninguém tratou o erro (motivo: \"$1\"). Use try/catch em volta do await, ou .catch() na Promise."],
+  [rx("Access to fetch at Q(.+?)Q from origin Q(.+?)Q has been blocked by CORS policy.*"), "Bloqueado por CORS: o servidor $1 não permitiu requisições vindas de $2. Isso se resolve NO SERVIDOR (ex.: Express: npm i cors e app.use(cors()))."],
+  [rx("(?:Uncaught )?(?:TypeError: )?(?!.*\\bas it\\b)(.+?) is (undefined|null)"), "'$1' é $2 (está vazio)."],
   [rx("(?:Uncaught )?(?:TypeError: )?(.+?) has no properties"), "'$1' não tem propriedades (é null ou undefined)."],
   [rx("(?:Uncaught )?(?:TypeError: )?(.+?)\\.(map|filter|forEach|reduce|find|push|includes|join) is not a function"), "'$1.$2' não é uma função: '$1' não é um array (lista). Verifique o valor — talvez seja um objeto, texto ou undefined."],
   [rx("(?:Uncaught )?(?:TypeError: )?(.+?) is not a function"), "'$1' não é uma função: o nome está errado, o valor não é uma função ou o método não existe nesse tipo."],
@@ -128,8 +154,22 @@ const regras = [
   [rx("(?:Uncaught )?(?:SyntaxError: )?Cannot use keyword QawaitQ outside an async function"), "'await' só pode ser usado dentro de uma função 'async'."],
   [rx("(?:Uncaught )?(?:SyntaxError: )?(?:Unexpected end of input|Unexpected end of script)"), "O código terminou antes do esperado: falta fechar algo ( }, ), ] ou aspas )."],
   [rx("(?:Uncaught )?(?:SyntaxError: )?Unexpected end of JSON input"), "O JSON terminou antes do esperado: o texto está vazio ou incompleto."],
+  // Mensagens de JSON do V8 novo (Node 20+, Chrome 117+): "... in JSON at position N (line L column C)"
+  [rx("(?:Uncaught )?(?:SyntaxError: )?Expected property name or Q\\}Q in JSON at position (\\d+).*"), "JSON inválido (posição $1): era esperado o nome de uma propriedade. Em JSON os nomes vão entre aspas duplas: {\"nome\": \"Ana\"}, não {nome: \"Ana\"}."],
+  [rx("(?:Uncaught )?(?:SyntaxError: )?Expected double-quoted property name in JSON at position (\\d+).*"), "JSON inválido (posição $1): era esperado um nome entre aspas duplas. Provavelmente há uma vírgula sobrando antes do } (JSON não aceita vírgula no final)."],
+  [rx("(?:Uncaught )?(?:SyntaxError: )?Expected Q,Q or Q\\}Q after property value in JSON at position (\\d+).*"), "JSON inválido (posição $1): falta uma vírgula entre as propriedades ou o } para fechar o objeto."],
+  [rx("(?:Uncaught )?(?:SyntaxError: )?Expected Q,Q or Q\\]Q after array element in JSON at position (\\d+).*"), "JSON inválido (posição $1): falta uma vírgula entre os itens ou o ] para fechar a lista."],
+  [rx("(?:Uncaught )?(?:SyntaxError: )?Expected Q:Q after property name in JSON at position (\\d+).*"), "JSON inválido (posição $1): falta ':' depois do nome da propriedade."],
+  [rx("(?:Uncaught )?(?:SyntaxError: )?Unterminated string in JSON at position (\\d+).*"), "JSON inválido (posição $1): um texto entre aspas não foi fechado."],
+  [rx("(?:Uncaught )?(?:SyntaxError: )?Bad control character in string literal in JSON at position (\\d+).*"), "JSON inválido (posição $1): há uma quebra de linha ou TAB dentro de um texto (use \\n)."],
+  [rx("(?:Uncaught )?(?:SyntaxError: )?Bad escaped character in JSON at position (\\d+).*"), "JSON inválido (posição $1): barra invertida \\ usada de forma errada dentro de um texto."],
+  [rx("(?:Uncaught )?(?:SyntaxError: )?Unexpected non-whitespace character after JSON at position (\\d+).*"), "JSON inválido (posição $1): há texto sobrando depois do fim do JSON."],
+  [rx("(?:Uncaught )?(?:SyntaxError: )?No number after minus sign in JSON at position (\\d+).*"), "JSON inválido (posição $1): sinal de menos sem número depois."],
+  [rx("(?:Uncaught )?(?:SyntaxError: )?(?!.*Unexpected token)(.+?) in JSON at position (\\d+).*"),"JSON inválido na posição $2 do texto ($1). Lembre: JSON usa aspas duplas, não aceita vírgula sobrando nem comentários."],
   [rx("(?:Uncaught )?(?:SyntaxError: )?Unexpected token Q?(.+?)Q? in JSON at position (\\d+)"), "JSON inválido: símbolo inesperado '$1' na posição $2 (JSON usa aspas duplas e não aceita vírgula sobrando)."],
-  [rx("(?:Uncaught )?(?:SyntaxError: )?Unexpected token Q(.+?)Q, (.+?) is not valid JSON"), "JSON inválido: símbolo inesperado '$1' (o texto não é JSON — talvez seja HTML de uma página de erro)."],
+  [rx("(?:Uncaught )?(?:SyntaxError: )?Unexpected token Q(.+?)Q, (.+?) is not valid JSON"), (s) => s === '<'
+    ? "JSON inválido: o texto começa com '<', então provavelmente é uma página HTML (ex.: erro 404 do servidor), não JSON."
+    : `JSON inválido: símbolo inesperado '${s}' (JSON usa aspas duplas, não aceita vírgula sobrando nem comentários).`],
   [rx("(?:Uncaught )?(?:SyntaxError: )?(?:\"(.+?)\"|(.+?)) is not valid JSON"), "O texto não é um JSON válido."],
   [rx("(?:Uncaught )?(?:SyntaxError: )?JSON\\.parse: (.+)"), "JSON.parse falhou: o texto não é um JSON válido ($1)."],
   [rx("(?:Uncaught )?(?:SyntaxError: )?Invalid or unexpected token"), "Símbolo inválido ou inesperado (muitas vezes aspas não fechadas ou aspas curvas “ ” copiadas de outro lugar)."],

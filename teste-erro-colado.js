@@ -66,6 +66,15 @@ const casos = [
     local: ['C:\\proj\\app.py', 7, null],
   },
   {
+    titulo: 'Node 20+: JSON.parse com nome sem aspas (aponta o caractere)',
+    saida: 'C:\\proj\\json.js:2\nconst pessoa = JSON.parse(\'{nome: "Ana"}\');\n                    ^\n\nSyntaxError: Expected property name or \'}\' in JSON at position 1 (line 1 column 2)\n    at JSON.parse (<anonymous>)\n    at Object.<anonymous> (C:\\proj\\json.js:2:21)',
+    arquivo: 'const texto = "x";\nconst pessoa = JSON.parse(\'{nome: "Ana"}\');\n',
+    local: ['C:\\proj\\json.js', 2, 21],
+    causa: 'precisam estar entre aspas duplas',
+    localCausa: [2, 29],
+    traducao: 'Em JSON os nomes vão entre aspas duplas',
+  },
+  {
     titulo: 'Só a mensagem (sem arquivo)',
     saida: 'TypeError: obj is not iterable',
     local: null,
@@ -91,6 +100,9 @@ for (const c of casos) {
     const col = colunaNoArquivo(info.local, linhaArq) ?? 1;
     const r = analisar(c.arquivo, { linha: info.local.linha - 1, coluna: col - 1, mensagem: info.principal });
     if (!r || !r.causa.includes(c.causa)) erros.push(`causa: ${r ? r.causa : 'nenhuma'}`);
+    else if (c.localCausa && (r.local.linha !== c.localCausa[0] - 1 || r.local.col !== c.localCausa[1] - 1)) {
+      erros.push(`local da causa ${r.local.linha + 1}:${r.local.col + 1} (esperado ${c.localCausa.join(':')})`);
+    }
   }
   if (c.traducao) {
     const t = traduzirLocal(info.principal);
