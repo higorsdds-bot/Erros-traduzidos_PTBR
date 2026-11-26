@@ -7,6 +7,7 @@ const { analisar } = require('./analisador');
 const { buscarReferencia } = require('./referencia-js');
 const { REGEX_LINHA_ERRO, REGEX_CORS, TIPOS_DE_ERRO, limparTexto, pareceErro, interpretarErro, colunaNoArquivo } = require('./erro-colado');
 const { analisarModulo } = require('./modulos');
+const { identificarCamada, dicaDaCamada, resumirCaminho, descreverCamada } = require('./camadas');
 
 const cache = new Map();        // mensagem -> { texto, fonte }
 const falhas = new Map();       // mensagem -> horário da última falha online
@@ -168,6 +169,18 @@ function adicionarReferencias(md, nomes) {
   }
 }
 
+// ---------------------------------------------------------------- camada do projeto (model, controller, rota...)
+
+/** Camada do arquivo pelo nome do arquivo/pastas (relativo à pasta do projeto), ou null. */
+function camadaDoArquivo(uri) {
+  if (!uri || !config().get('mostrarCamada')) return null;
+  try {
+    return identificarCamada(vscode.workspace.asRelativePath(uri, false));
+  } catch {
+    return null;
+  }
+}
+
 // ---------------------------------------------------------------- hover
 
 function diagnosticosNaPosicao(documento, posicao) {
@@ -185,6 +198,7 @@ async function criarHover(documento, posicao) {
   const mostrarReferencia = config().get('mostrarReferencia') && LINGUAGENS_JS.has(documento.languageId);
   const causasMostradas = new Set();
   const referencias = [];
+  const camada = camadaDoArquivo(documento.uri);
 
   for (const [n, d] of diagnosticos.entries()) {
     if (n > 0) md.appendMarkdown('\n\n---\n\n');
@@ -192,8 +206,11 @@ async function criarHover(documento, posicao) {
     md.appendMarkdown(`${ICONES[sev]} **${NOMES[sev]}**`);
     if (d.source) md.appendText(` (${d.source})`);
     md.appendText(` · linha ${d.range.start.line + 1}, coluna ${d.range.start.character + 1}`);
+    if (camada && n === 0) md.appendMarkdown(`\n\n🧩 **Camada:** ${descreverCamada(camada)}`);
 
     const a = analisarDiagnostico(documento, d);
+    const dicaCamada = a && a.dica ? null : dicaDaCamada(camada, d.message);
+    if (dicaCamada) md.appendMarkdown(`\n\n🧩💡 ${dicaCamada}`);
     if (a) {
       referencias.push(...referenciasDoErro(d, a));
       if (causasMostradas.has(a.causa)) {
@@ -367,6 +384,8 @@ async function listarErros() {
   const diagnosticos = vscode.languages.getDiagnostics(editor.document.uri);
   canalSaida.clear();
   canalSaida.appendLine(`Erros e sugestões em ${vscode.workspace.asRelativePath(editor.document.uri)} (${diagnosticos.length})`);
+  const camada = camadaDoArquivo(editor.document.uri);
+  if (camada) canalSaida.appendLine(`🧩 Camada: ${textoSimples(descreverCamada(camada).replace(/\*\*/g, ''))}`);
   canalSaida.appendLine('='.repeat(60));
   const causasMostradas = new Set();
   for (const d of diagnosticos) {
@@ -375,6 +394,8 @@ async function listarErros() {
     const a = analisarDiagnostico(editor.document, d);
     canalSaida.appendLine('');
     canalSaida.appendLine(`${ICONES[sev]} ${NOMES[sev]} — linha ${d.range.start.line + 1}, coluna ${d.range.start.character + 1}${d.source ? ` (${d.source})` : ''}`);
+    const dicaCamada = a && a.dica ? null : dicaDaCamada(camada, d.message);
+    if (dicaCamada) canalSaida.appendLine(`   🧩 ${textoSimples(dicaCamada.replace(/\*\*/g, ''))}`);
     if (a && causasMostradas.has(a.causa)) {
       canalSaida.appendLine('   ↪️ Mesma causa de um erro listado acima.');
     } else if (a) {
@@ -477,8 +498,12 @@ async function montarExplicacao(textoErro) {
         add('## 🎯 Causa provável', '', analise.causa, '');
       }
       const nome = vscode.workspace.asRelativePath(arquivo);
+      const camada = camadaDoArquivo(arquivo);
       add('## 📍 Onde está o erro', '');
       add(`[${nome}, linha ${alvo.linha + 1}, coluna ${alvo.col + 1}](${arquivo.toString()}#L${alvo.linha + 1})`, '');
+      if (camada) add(`🧩 **Camada:** ${descreverCamada(camada)}`, '');
+      const dicaCamada = analise && analise.dica ? null : dicaDaCamada(camada, info.principal);
+      if (dicaCamada) add(`🧩💡 ${dicaCamada}`, '');
       if (linhaConhecida && analise && analise.local && (analise.local.linha !== linha || (coluna && analise.local.col !== col))) {
         add(`_O terminal apontou a linha ${linha + 1}${coluna ? `, coluna ${col + 1}` : ''} (primeiro trecho abaixo): é onde o erro **aconteceu**. O segundo trecho é onde ele precisa ser **corrigido**._`, '');
         add('```text', trechoMarcado(doc, { linha, col, fimCol: coluna ? col + 1 : doc.lineAt(linha).text.length }), '```', '');
@@ -495,13 +520,19 @@ async function montarExplicacao(textoErro) {
       // Caminho das chamadas no código do usuário (ex.: rota -> controller -> model)
       const outras = (info.chamadas ?? []).filter((c) => !(c.linha === info.local.linha && c.caminho === info.local.caminho)).slice(0, 5);
       if (outras.length) {
-        add('**Chamado por** (de dentro para fora):', '');
+        const itens = [];
+        const quadros = [{ camada }]; // de dentro para fora: o local do erro primeiro
         for (const c of outras) {
           const uri = await resolverArquivo(c.caminho);
+          const camadaChamada = uri ? camadaDoArquivo(uri) : (config().get('mostrarCamada') ? identificarCamada(c.caminho) : null);
+          quadros.push({ camada: camadaChamada });
           const rotulo = `${uri ? vscode.workspace.asRelativePath(uri) : c.caminho}:${c.linha}`;
-          add(`- ${c.funcao ? emCodigo(c.funcao) + ' em ' : ''}${uri ? `[${rotulo}](${uri.toString()}#L${c.linha})` : emCodigo(rotulo)}`);
+          const etiqueta = camadaChamada ? `${camadaChamada.emoji} ${camadaChamada.nome}: ` : '';
+          itens.push(`- ${etiqueta}${c.funcao ? emCodigo(c.funcao) + ' em ' : ''}${uri ? `[${rotulo}](${uri.toString()}#L${c.linha})` : emCodigo(rotulo)}`);
         }
-        add('');
+        const resumo = resumirCaminho(quadros);
+        if (resumo) add(`🧭 **Caminho do erro:** ${resumo} _(o erro estourou na última)_`, '');
+        add('**Chamado por** (de dentro para fora):', '', ...itens, '');
       }
     } else {
       add('## 📍 Onde está o erro', '');

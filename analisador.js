@@ -930,6 +930,14 @@ function dicaDeExportacao(origem, nome, oQueEsperava) {
 }
 
 const METODOS_DE_ARRAY = ['map', 'filter', 'forEach', 'reduce', 'find', 'findIndex', 'push', 'pop', 'includes', 'join', 'some', 'every', 'sort', 'slice', 'splice', 'indexOf', 'flat', 'flatMap'];
+// Métodos de bibliotecas de banco de dados (Sequelize, Mongoose, Prisma, Knex, mysql2/pg).
+const METODOS_DE_BANCO = new Set([
+  'findAll', 'findOne', 'findByPk', 'findOrCreate', 'findAndCountAll', 'bulkCreate', 'destroy', 'upsert', 'increment', 'decrement',
+  'findById', 'findByIdAndUpdate', 'findByIdAndDelete', 'findOneAndUpdate', 'findOneAndDelete', 'updateOne', 'updateMany',
+  'deleteOne', 'deleteMany', 'insertMany', 'countDocuments', 'aggregate', 'populate', 'lean',
+  'findMany', 'findUnique', 'findFirst', 'createMany', 'upsertMany',
+  'query', 'execute', 'getConnection',
+]);
 
 function analisarErroDeExecucao(ctx, msg, pos, linha) {
   const { toks } = ctx;
@@ -1104,6 +1112,16 @@ function analisarErroDeExecucao(ctx, msg, pos, linha) {
         dica: obj
           ? `Confira em ${codigo(origem.modulo)} se existe ${codigo(prop)} e se ele está no ${codigo('module.exports')}/${codigo('export')} (ex.: ${codigo(`module.exports = { ${prop} }`)}). Sem ${codigo('module.exports')}, o require devolve ${codigo('{}')}.`
           : dicaExport,
+        refs: [],
+      };
+    }
+    // Métodos de bibliotecas de banco (Sequelize, Mongoose, Prisma, Knex...): não é erro de digitação
+    // (ex.: "findAll" não deve virar "finally"); o objeto é que não é um model/cliente dessa biblioteca.
+    if (obj && METODOS_DE_BANCO.has(prop)) {
+      return {
+        causa: `${codigo(obj)} não tem o método ${codigo(prop)}: ${codigo(prop)} é um método de bibliotecas de banco de dados (Sequelize, Mongoose, Prisma...), e ${codigo(obj)} não é um model/cliente criado por uma delas.`,
+        local,
+        dica: `Confira se ${codigo(obj)} foi criado com a biblioteca (ex.: ${codigo("sequelize.define('Usuario', {...})")}, ${codigo("mongoose.model('Usuario', schema)")}), se o arquivo do model faz ${codigo(`module.exports = ${obj.split('.').pop()}`)} e se o import/require está pegando esse export (com ou sem chaves). Confira também se o nome do método é dessa biblioteca (ex.: ${codigo('findAll')} é do Sequelize; no Mongoose é ${codigo('find')}).`,
         refs: [],
       };
     }

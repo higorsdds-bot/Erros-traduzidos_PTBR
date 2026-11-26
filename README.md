@@ -59,6 +59,22 @@ Quando existe uma correção segura, ela aparece na **lâmpada 💡 (`Ctrl+.`)**
 
 Em projetos com várias pastas (server, routes, controllers, models), a extensão ignora o código das bibliotecas (`node_modules`), abre o **seu** arquivo, mostra o caminho das chamadas (rota → controller → model) e explica erros típicos: `require`/`import` com caminho ou nome errado, `.js` esquecido no import, export que não existe, `this` perdido no controller, `await` esquecido, `req.body` vazio (falta `express.json()`), resposta enviada duas vezes, porta ocupada e CORS.
 
+**Camada do projeto pelo nome**: a extensão reconhece a camada de cada arquivo pelo nome do arquivo ou da pasta, mesmo com nomes diferentes: `models/Usuario.js`, `Modelusuario.js`, `modelsUsuarios.js`, `usuarioModel.js` e `usuario.model.js` são todos **Model**. O mesmo vale para as outras camadas:
+
+| Camada | Exemplos de nome |
+|---|---|
+| 🛣️ Rota | `routes/`, `rotas/`, `usuarioRoutes.js`, `user.routes.ts`, `router.js` |
+| 🎮 Controller | `controllers/`, `controladores/`, `UsuarioController.java`, `controllerUsuario.js` |
+| ⚙️ Service | `services/`, `usuarioService.js`, `servicoEmail.js` |
+| 📦 Repository | `repositories/`, `UsuarioRepository.ts`, `usuarioDAO.java` |
+| 🗃️ Model | `models/`, `modelos/`, `entities/`, `schemas/`, `Modelusuario.js` |
+| 🛢️ Banco de dados | `db.js`, `config/db.js`, `database/`, `conexao.js`, `dbConnection.js`, `migrations/` |
+| 🚧 Middleware | `middlewares/`, `authMiddleware.js` |
+| 🖥️ View (tela) | `views/`, `pages/`, `components/`, `public/` |
+| Outras | Validação, Configuração, Utilitário, Teste e Servidor (`server.js`, `app.js`) |
+
+Com isso, o hover e a explicação mostram em qual camada o erro está, o que essa camada faz e uma dica do erro comum nela (ex.: no controller, "resposta enviada duas vezes"; no model, "a consulta não encontrou nada"; em qualquer camada, "o banco não está rodando" para `ECONNREFUSED`). Nos erros do terminal aparece também o **caminho do erro**: `🛣️ Rota → 🎮 Controller → 🗃️ Model`. Para desligar: `tradutorErros.mostrarCamada`.
+
 Copie o erro **inteiro**, com as linhas `at ...` (JavaScript) ou `File "..."` (Python): é por elas que a extensão descobre o arquivo e a linha. Exemplo: em `TypeError: Cannot read properties of undefined (reading 'map')`, a extensão abre o arquivo e mostra que quem está `undefined` é `dados.itens`, e não o `map`.
 
 ## Como traduz
@@ -78,6 +94,7 @@ Copie o erro **inteiro**, com as linhas `at ...` (JavaScript) ou `File "..."` (P
 | `tradutorErros.analisarCausa` | `true` | Em JS/TS, mostra a causa provável e o local exato do erro |
 | `tradutorErros.mostrarReferencia` | `true` | Em JS/TS, mostra a explicação (MDN) de palavras-chave e funções prontas |
 | `tradutorErros.linksNoTerminal` | `true` | Transforma as mensagens de erro do terminal em links para a explicação |
+| `tradutorErros.mostrarCamada` | `true` | Identifica a camada (Model, Controller, Rota, Banco...) pelo nome do arquivo/pasta e mostra dicas dela |
 
 ## Comandos
 
@@ -89,13 +106,13 @@ Copie o erro **inteiro**, com as linhas `at ...` (JavaScript) ou `File "..."` (P
 
 ## Contribuir
 
-Achou uma mensagem sem tradução ou com tradução ruim? Abra uma [issue](https://github.com/higorsdds-bot/Erros-traduzidos_PTBR/issues) ou adicione uma regra na lista `regras` em `tradutor.js`. Para testar: `node teste-dicionario.js` (dicionário), `node teste-analisador.js` (causa real dos erros de JS) , `node teste-erro-colado.js` (erros colados do terminal) e `node teste-projetos.js` (projetos com server/routes/controllers/models).
+Achou uma mensagem sem tradução ou com tradução ruim? Abra uma [issue](https://github.com/higorsdds-bot/Erros-traduzidos_PTBR/issues) ou adicione uma regra na lista `regras` em `tradutor.js`. Para testar: `node teste-dicionario.js` (dicionário), `node teste-analisador.js` (causa real dos erros de JS) , `node teste-erro-colado.js` (erros colados do terminal) , `node teste-projetos.js` (projetos com server/routes/controllers/models) e `node teste-camadas.js` (camada pelo nome do arquivo/pasta).
 
 Para gerar e instalar localmente:
 
 ```
 npx @vscode/vsce package
-code --install-extension tradutor-de-erros-0.1.1.vsix
+code --install-extension tradutor-de-erros-0.1.2.vsix
 ```
 
 ## Licença

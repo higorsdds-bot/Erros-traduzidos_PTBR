@@ -42,6 +42,10 @@ Write-Host '==> Testando projetos com várias camadas (Express)' -ForegroundColo
 node teste-projetos.js | Select-Object -Last 1
 if ($LASTEXITCODE -ne 0) { throw 'O teste de projetos falhou (rode node teste-projetos.js para ver os detalhes).' }
 
+Write-Host '==> Testando a identificação de camadas (model, controller, rota...)' -ForegroundColor Cyan
+node teste-camadas.js | Select-Object -Last 1
+if ($LASTEXITCODE -ne 0) { throw 'O teste de camadas falhou (rode node teste-camadas.js para ver os detalhes).' }
+
 if ($Versao) {
   Write-Host "==> Subindo a versão ($Versao)" -ForegroundColor Cyan
   npm version $Versao --no-git-tag-version | Out-Null

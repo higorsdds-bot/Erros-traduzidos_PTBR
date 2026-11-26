@@ -5,6 +5,7 @@ const { analisar } = require('./analisador');
 
 const casos = [
   // [título, código, [linha, coluna, mensagem], trecho esperado na causa, [linha, coluna] esperados do local]
+  ['findAll do Sequelize não vira finally', 'function buscarTodos() {\n  return Usuario.findAll();\n}', [2, 18, 'TypeError: Usuario.findAll is not a function'], 'é um método de bibliotecas de banco de dados', [2, 18]],
   ['funtion escrito errado', 'funtion somar(a, b) {\n  return a + b;\n}', [1, 21, "';' expected."], '`funtion` está escrito errado', [1, 1]],
   ['asnyc em arrow', 'const f = asnyc () => {};', [1, 20, "';' expected."], '`asnyc` está escrito errado: o certo é `async`', [1, 11]],
   ['awiat', 'async function f() {\n  const r = awiat fetch("/x");\n}', [2, 19, "',' expected."], 'o certo é `await`', [2, 13]],

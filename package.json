@@ -2,7 +2,7 @@
   "name": "tradutor-de-erros",
   "displayName": "Tradutor de Erros (PT-BR)",
   "description": "Mostra os erros e sugestões do editor em inglês e em português, para quem está aprendendo a programar.",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "publisher": "ZeniF",
   "license": "MIT",
   "icon": "icone.png",
@@ -129,6 +129,11 @@
           "type": "boolean",
           "default": true,
           "description": "Transforma as mensagens de erro do terminal integrado (ex.: 'TypeError: ...') em links: clique com Ctrl para ver a explicação em português e ir direto ao local do erro."
+        },
+        "tradutorErros.mostrarCamada": {
+          "type": "boolean",
+          "default": true,
+          "description": "Identifica a camada do projeto pelo nome do arquivo e das pastas (ex.: 'models/Usuario.js', 'Modelusuario.js' e 'usuarioModel.js' são Model; também Controller, Rota, Banco de dados, Service, Middleware...) e mostra dicas dos erros comuns de cada camada e o caminho do erro (Rota → Controller → Model)."
         },
         "tradutorErros.mostrarReferencia": {
           "type": "boolean",

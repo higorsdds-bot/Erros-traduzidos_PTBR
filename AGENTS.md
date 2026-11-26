@@ -7,7 +7,7 @@ Este documento fornece contexto completo para qualquer agente de IA trabalhar no
 ## 1. Visão Geral do Projeto
 
 - **Nome da extensão:** `tradutor-de-erros` (**Tradutor de Erros (PT-BR)**)
-- **Publicador:** `ZeniF` (`version`: `0.1.1`, licença `MIT`)
+- **Publicador:** `ZeniF` (`version`: `0.1.2`, licença `MIT`)
 - **Engine mínima:** `vscode` `^1.80.0`
 - **Editores compatíveis:** VS Code, Antigravity, Cursor, Windsurf, VSCodium e derivados baseados no VS Code.
 - **Propósito:** Exibir diagnósticos do editor (erros, avisos, informações e dicas) simultaneamente em inglês e português brasileiro (PT-BR), acompanhados de vocabulário técnico para quem está aprendendo a programar.
@@ -33,6 +33,8 @@ Este documento fornece contexto completo para qualquer agente de IA trabalhar no
 | `analisador.js` | Analisador de causa para JS/TS: tokeniza o arquivo e, a partir de um diagnóstico, devolve a causa real, o local exato, dica, exemplo e correção (`analisar(texto, diag)`). Também entende erros de execução (`Cannot read properties of undefined`, `x is not a function`, `is not iterable`, `Assignment to constant variable`) com o prefixo `TypeError:` etc. Não depende de `vscode`. | Sim |
 | `erro-colado.js` | Lê um erro copiado do terminal/console (Node, navegador, Python): `interpretarErro(texto)` → `{ principal, mensagens, tipo, local: { caminho, linha, coluna, codigo, marcador } }` (base 1); `colunaNoArquivo` converte o `^^^` em coluna do arquivo; `REGEX_LINHA_ERRO` é usada pelos links do terminal. Não depende de `vscode`. | Sim |
 | `modulos.js` | Causa de erros de módulo olhando o disco: `analisarModulo(info, arquivoImportador, texto, linha)` — arquivo inexistente (sugere o nome parecido), `.js` esquecido no import ESM, pacote não instalado (sugere o instalado), nome não exportado / `export default` (lê os exports do outro arquivo). Usa `fs`, não depende de `vscode`. | Sim |
+| `camadas.js` | Camada do projeto pelo NOME do arquivo/pastas: `identificarCamada(caminhoRelativo)` → `{ id, nome, emoji, papel, dicas, motivo, palavra }` ou `null`; `dicaDaCamada(camada, mensagem)` (dicas de banco de dados valem em qualquer camada); `resumirCaminho(quadros)` → `"🛣️ Rota → 🎮 Controller → 🗃️ Model"`; `descreverCamada`. Ordem: nome do arquivo → pastas (até 4, da mais próxima) → arquivo de entrada (`server`/`app`/`index`/`main`, só nome exato). Chave no começo/fim do nome ou como palavra do camelCase; chaves curtas (≤ 4 letras: `db`, `rota`, `view`) exigem fronteira (maiúscula, separador ou fim). `EXCECOES` evita falsos positivos (`modelagem`, `rotacao`...). `config` perde para outra camada no mesmo nome (`database.config.js` → banco). Não depende de `vscode`. | Sim |
+| `teste-camadas.js` | 57 caminhos + 6 dicas + caminho das chamadas. Sai com código 1 em falha. | Não (`.vscodeignore`) |
 | `teste-projetos.js` | 18 cenários de projetos Express (CJS e ESM) com saídas reais do Node 24, montando um mini projeto em pasta temporária. Sai com código 1 em falha. | Não (`.vscodeignore`) |
 | `teste-erro-colado.js` | Teste com 10 saídas reais (Node, Chrome, Python). Sai com código 1 em falha. | Não (`.vscodeignore`) |
 | `referencia-js.js` | Referência rápida de JavaScript em PT-BR (baseada na MDN), listas de palavras reservadas/chaves/globais e métodos por tipo. Usada pelo `analisador.js` e pelo hover. | Sim |
@@ -163,7 +165,9 @@ Este documento fornece contexto completo para qualquer agente de IA trabalhar no
 - **Na extensão:** só para `javascript`, `javascriptreact`, `typescript`, `typescriptreact`; cache por versão do documento (`analises`); hover com trecho marcado `^^^`, decoração `decoracaoLocal` no ponto exato, `CodeActionProvider` com a `correcao`. Configs `tradutorErros.analisarCausa` e `tradutorErros.mostrarReferencia`.
 - **Erros do terminal (`extension.js`):** comandos `tradutorErros.traduzirErroCopiado` (área de transferência, ou caixa para colar; aceita o texto como argumento) e `tradutorErros.traduzirSelecaoTerminal` (menu `terminal/context`); `registerTerminalLinkProvider` cria link em linhas que casam com `REGEX_LINHA_ERRO`. Ao clicar, o contexto (arquivo:linha acima, pilha abaixo) vem da saída capturada por `onDidStartTerminalShellExecution` (VS Code 1.93+, detectado em tempo de execução; engine continua `^1.80.0`) ou, sem integração de shell, de "selecionar tudo + copiar" no terminal (restaurando a área de transferência). A explicação é um documento virtual `tradutor-erros:` aberto com `markdown.showPreviewToSide`, e o arquivo do erro é aberto com a seleção no ponto exato. `findFiles` tem tempo limite de 3 s.
 - **Testes de integração:** foram feitos com `@vscode/test-electron` fora do repositório (sem adicionar dependência). Observado: na cópia baixada pelo test-electron os terminais não iniciam neste Windows; com o VS Code instalado (`vscodeExecutablePath` + `--user-data-dir` separado) funcionam. A área de transferência não funciona na instância de teste, então o plano B dos links (selecionar tudo + copiar) não tem teste automatizado.
-- **Testar:** `node teste-analisador.js` e `node teste-erro-colado.js`. Para gerar casos novos com mensagens reais, use o pacote `typescript` fora do repositório (não adicionar dependência ao projeto).
+- **Camadas na extensão (`extension.js`):** `camadaDoArquivo(uri)` usa `asRelativePath` (para não olhar pastas fora do projeto) e respeita `tradutorErros.mostrarCamada`. Hover: linha `🧩 **Camada:**` no primeiro diagnóstico e `🧩💡` com a dica da camada quando o analisador não deu dica própria. Lista (`listarErros`): camada no cabeçalho. Erro colado: camada e dica em "Onde está o erro", `🧭 **Caminho do erro:**` e etiqueta de camada em cada item de "Chamado por".
+- **Métodos de banco no analisador:** `METODOS_DE_BANCO` (Sequelize/Mongoose/Prisma/Knex) impede que o corretor de digitação troque `Usuario.findAll` por `finally`; nesses casos a causa explica que o objeto não é um model da biblioteca.
+- **Testar:** `node teste-analisador.js`, `node teste-erro-colado.js`, `node teste-projetos.js` e `node teste-camadas.js`. Para gerar casos novos com mensagens reais, use o pacote `typescript` fora do repositório (não adicionar dependência ao projeto).
 
 ---
 
@@ -185,7 +189,7 @@ Este documento fornece contexto completo para qualquer agente de IA trabalhar no
 - **Via pacote `.vsix`:**
   ```powershell
   npx @vscode/vsce package
-  code --install-extension tradutor-de-erros-0.1.1.vsix
+  code --install-extension tradutor-de-erros-0.1.2.vsix
   ```
 
 ### Publicar uma nova versão (`publicar.ps1`)
