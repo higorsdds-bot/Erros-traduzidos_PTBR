@@ -95,7 +95,7 @@ Para gerar e instalar localmente:
 
 ```
 npx @vscode/vsce package
-code --install-extension tradutor-de-erros-0.1.0.vsix
+code --install-extension tradutor-de-erros-0.1.1.vsix
 ```
 
 ## Licença

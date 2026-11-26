@@ -7,7 +7,7 @@ Este documento fornece contexto completo para qualquer agente de IA trabalhar no
 ## 1. Visão Geral do Projeto
 
 - **Nome da extensão:** `tradutor-de-erros` (**Tradutor de Erros (PT-BR)**)
-- **Publicador:** `ZeniF` (`version`: `0.1.0`, licença `MIT`)
+- **Publicador:** `ZeniF` (`version`: `0.1.1`, licença `MIT`)
 - **Engine mínima:** `vscode` `^1.80.0`
 - **Editores compatíveis:** VS Code, Antigravity, Cursor, Windsurf, VSCodium e derivados baseados no VS Code.
 - **Propósito:** Exibir diagnósticos do editor (erros, avisos, informações e dicas) simultaneamente em inglês e português brasileiro (PT-BR), acompanhados de vocabulário técnico para quem está aprendendo a programar.
@@ -185,7 +185,7 @@ Este documento fornece contexto completo para qualquer agente de IA trabalhar no
 - **Via pacote `.vsix`:**
   ```powershell
   npx @vscode/vsce package
-  code --install-extension tradutor-de-erros-0.1.0.vsix
+  code --install-extension tradutor-de-erros-0.1.1.vsix
   ```
 
 ### Publicar uma nova versão (`publicar.ps1`)
@@ -223,4 +223,4 @@ Este documento fornece contexto completo para qualquer agente de IA trabalhar no
 6. **Limitações da suíte de testes:**
    - `teste-dicionario.js` não retorna código de saída diferente de zero quando uma regra falha em casar (sempre sai com `0` se não houver erro de sintaxe/exceção). É obrigatório conferir a saída e a proporção final no terminal.
    - O analisador tem teste próprio (`teste-analisador.js`, sai com código 1 em falha). Não existem testes automatizados para `encontrarVocabulario()` nem para `extension.js` (UI, cache, debounce e chamada online).
-7. **Versionamento no `publicar.ps1` e `README.md`:** `publicar.ps1` usa `--no-git-tag-version` (o commit e a tag git precisam ser feitos manualmente), e o `README.md` possui o número de versão `0.1.0` fixo no exemplo de instalação local.
+7. **Versionamento no `publicar.ps1` e `README.md`:** `publicar.ps1` usa `--no-git-tag-version` (o commit e a tag git precisam ser feitos manualmente), e o `README.md` possui o número de versão fixo no exemplo de instalação local.

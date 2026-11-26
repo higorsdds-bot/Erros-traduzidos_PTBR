@@ -2,7 +2,7 @@
   "name": "tradutor-de-erros",
   "displayName": "Tradutor de Erros (PT-BR)",
   "description": "Mostra os erros e sugestões do editor em inglês e em português, para quem está aprendendo a programar.",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "publisher": "ZeniF",
   "license": "MIT",
   "icon": "icone.png",
@@ -95,7 +95,12 @@
         },
         "tradutorErros.severidadeNaLinha": {
           "type": "string",
-          "enum": ["erro", "aviso", "informacao", "dica"],
+          "enum": [
+            "erro",
+            "aviso",
+            "informacao",
+            "dica"
+          ],
           "enumDescriptions": [
             "Só erros",
             "Erros e avisos",
